@@ -25,12 +25,61 @@ if (!defined('INCLUDED')) {
  * @return array Array of theme information
  */
 function getAvailableThemes() {
+    $themes = [];
+    
+    // Try to get themes from database first
+    try {
+        $dbThemes = executeQuery(
+            "SELECT * FROM themes WHERE is_active = TRUE ORDER BY name",
+            [],
+            ''
+        );
+        
+        foreach ($dbThemes as $theme) {
+            $themes[$theme['id']] = [
+                'id' => $theme['id'],
+                'name' => $theme['name'],
+                'description' => $theme['description'],
+                'preview_image' => $theme['preview_image'],
+                'is_default' => $theme['is_default'],
+                'directory' => $theme['directory'],
+                'path' => __DIR__ . '/../themes/' . $theme['directory']
+            ];
+        }
+    } catch (Exception $e) {
+        error_log("Error fetching themes from database: " . $e->getMessage());
+        // Continue with directory scanning if database fails
+    }
+    
+    // If no themes found in database, scan the themes directory
+    if (empty($themes)) {
+        $themes = scanDirectoryForThemes();
+    }
+    
+    // Add default built-in themes for backward compatibility
+    $defaultThemes = getDefaultThemes();
+    foreach ($defaultThemes as $id => $theme) {
+        if (!isset($themes[$id])) {
+            $themes[$id] = $theme;
+        }
+    }
+    
+    return $themes;
+}
+
+/**
+ * Scan the themes directory for themes
+ * 
+ * @return array Array of theme information
+ */
+function scanDirectoryForThemes() {
     $themesDir = __DIR__ . '/../themes/';
     $themes = [];
     
     // Check if themes directory exists
     if (!is_dir($themesDir)) {
         mkdir($themesDir, 0755, true);
+        return $themes;
     }
     
     // Get all directories in the themes folder
@@ -49,6 +98,7 @@ function getAvailableThemes() {
             
             // Validate theme configuration
             if (isset($themeConfig['id']) && isset($themeConfig['name'])) {
+                $themeId = $themeConfig['id'];
                 $themeConfig['directory'] = $dir;
                 $themeConfig['path'] = $themesDir . $dir;
                 
@@ -58,16 +108,8 @@ function getAvailableThemes() {
                     $themeConfig['preview_image'] = 'themes/' . $dir . '/preview.jpg';
                 }
                 
-                $themes[$themeConfig['id']] = $themeConfig;
+                $themes[$themeId] = $themeConfig;
             }
-        }
-    }
-    
-    // Add default built-in themes if no external themes found or for backward compatibility
-    $defaultThemes = getDefaultThemes();
-    foreach ($defaultThemes as $id => $theme) {
-        if (!isset($themes[$id])) {
-            $themes[$id] = $theme;
         }
     }
     
@@ -123,6 +165,32 @@ function getDefaultThemes() {
  * @return array|null Theme information or null if not found
  */
 function getThemeById($themeId) {
+    // Try to get the theme from database first
+    try {
+        $theme = executeQuery(
+            "SELECT * FROM themes WHERE id = ?",
+            [$themeId],
+            'i'
+        );
+        
+        if (!empty($theme)) {
+            $theme = $theme[0];
+            return [
+                'id' => $theme['id'],
+                'name' => $theme['name'],
+                'description' => $theme['description'],
+                'preview_image' => $theme['preview_image'],
+                'is_default' => $theme['is_default'],
+                'directory' => $theme['directory'],
+                'path' => __DIR__ . '/../themes/' . $theme['directory']
+            ];
+        }
+    } catch (Exception $e) {
+        error_log("Error getting theme from database: " . $e->getMessage());
+        // Continue with other methods if database fails
+    }
+    
+    // Try to get from all available themes
     $themes = getAvailableThemes();
     
     // First check if theme exists in available themes
@@ -160,7 +228,11 @@ function loadThemeAssets($themeId) {
         return $assets;
     }
     
-    // External theme - load CSS and JS files
+    // External theme - check if we have a path
+    if (!isset($theme['path']) || !is_dir($theme['path'])) {
+        return $assets;
+    }
+    
     $themePath = $theme['path'];
     
     // Add CSS files
@@ -203,6 +275,10 @@ function getThemeHtml($themeId) {
     }
     
     // External theme - load HTML from theme file
+    if (!isset($theme['path'])) {
+        return getDefaultThemeHtml(1); // Fallback
+    }
+    
     $themePath = $theme['path'];
     $htmlFile = $themePath . '/theme.html';
     
@@ -301,3 +377,4 @@ function getDefaultThemeHtml($themeId) {
             return getDefaultThemeHtml(1);
     }
 }
+?>
