@@ -1,0 +1,11 @@
+{
+  "id": 1,
+  "name": "Treasure Chest",
+  "description": "An elegant treasure chest that opens to reveal the prize with sparkling animations",
+  "version": "1.0",
+  "author": "Claude AI",
+  "supports": ["mobile", "desktop"],
+  "tags": ["animated", "interactive", "premium"]
+  
+}
+
